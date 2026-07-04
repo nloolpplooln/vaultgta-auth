@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>VaultGTA - 账号验证</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#07070d; color:#e8e8e8; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; }
+  .container { max-width:460px; margin:60px auto; padding:20px; }
+  .card { background:linear-gradient(180deg,#0d0d1a,#0b0b0b); border:1px solid #1e1e3a; border-radius:12px; padding:40px 32px; text-align:center; }
+  h1 { color:#d4a843; font-size:22px; letter-spacing:2px; margin-bottom:4px; }
+  .sub { color:#666; font-size:12px; margin-bottom:24px; }
+  h2 { font-size:16px; margin-bottom:12px; }
+  p { color:#999; font-size:13px; line-height:1.6; margin-bottom:16px; }
+  .spinner { width:36px; height:36px; border:3px solid #1e1e3a; border-top-color:#d4a843; border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 16px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .done-icon { font-size:48px; margin-bottom:12px; }
+  button { width:100%; padding:12px; background:linear-gradient(135deg,#d4a843,#c9952e); color:#0b0b0b; font-weight:bold; font-size:14px; border:none; border-radius:6px; cursor:pointer; letter-spacing:1px; }
+  button:disabled { opacity:0.6; cursor:not-allowed; }
+  input { width:100%; padding:12px; background:rgba(255,255,255,0.06); border:1px solid #2a2a4a; border-radius:6px; color:#fff; font-size:14px; margin-bottom:12px; outline:none; }
+  input:focus { border-color:#d4a843; }
+  .msg { font-size:12px; margin-top:12px; }
+  .msg.error { color:#e74c3c; }
+  .msg.success { color:#27ae60; }
+  .tabs { display:flex; gap:0; margin-bottom:20px; border-radius:8px; overflow:hidden; border:1px solid #1e1e3a; }
+  .tab { flex:1; padding:8px; text-align:center; font-size:12px; color:#666; cursor:pointer; background:transparent; transition:all 0.2s; }
+  .tab.active { background:rgba(212,168,67,0.15); color:#d4a843; }
+  .tab:first-child { border-right:1px solid #1e1e3a; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card" id="card">
+    <h1>VAULTGTA</h1>
+    <div class="sub">GTA Online 载具收藏管理</div>
+    <div class="spinner" id="spinner"></div>
+    <h2 id="title">处理中...</h2>
+    <p id="message">请稍候</p>
+    <div id="action-area"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+(function () {
+  var SUPABASE_URL = 'https://dfchvbffwmuxvdwmqwwx.supabase.co';
+  var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmY2h2YmZmd211eHZkd21xd3d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMDM0NzksImV4cCI6MjA5ODY3OTQ3OX0.ut2xMOFBu9VrZOVQgjTd-S_p6LY_h9Ue6R-azaWDjzg';
+
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  var hash = window.location.hash;
+  var params = new URLSearchParams(hash.substring(1));
+  var type = params.get('type') || '';
+  var accessToken = params.get('access_token');
+  var refreshToken = params.get('refresh_token');
+  var error = params.get('error');
+  var errorDesc = params.get('error_description');
+
+  var elTitle = document.getElementById('title');
+  var elMsg = document.getElementById('message');
+  var elSpinner = document.getElementById('spinner');
+  var elAction = document.getElementById('action-area');
+
+  function showDone(title, msg) {
+    elSpinner.innerHTML = '<div class="done-icon">✅</div>';
+    elSpinner.style.animation = 'none';
+    elSpinner.style.borderTopColor = 'transparent';
+    elTitle.textContent = title;
+    elMsg.textContent = msg;
+  }
+
+  function showError(title, msg) {
+    elSpinner.innerHTML = '<div class="done-icon">❌</div>';
+    elSpinner.style.animation = 'none';
+    elSpinner.style.borderTopColor = 'transparent';
+    elTitle.textContent = title;
+    elMsg.textContent = msg;
+  }
+
+  function showPasswordForm() {
+    elSpinner.style.display = 'none';
+    elTitle.textContent = '设置新密码';
+    elMsg.textContent = '请输入你的新密码。';
+    elAction.innerHTML =
+      '<input type="password" id="pw1" placeholder="新密码（至少6位）" minlength="6">' +
+      '<input type="password" id="pw2" placeholder="确认密码">' +
+      '<button id="btn-reset">确认重置</button>' +
+      '<div class="msg" id="pw-msg"></div>';
+    document.getElementById('btn-reset').addEventListener('click', handleReset);
+  }
+
+  async function handleReset() {
+    var pw1 = document.getElementById('pw1').value;
+    var pw2 = document.getElementById('pw2').value;
+    var msgEl = document.getElementById('pw-msg');
+    var btn = document.getElementById('btn-reset');
+    if (pw1.length < 6) { msgEl.textContent = '密码至少6位'; msgEl.className = 'msg error'; return; }
+    if (pw1 !== pw2) { msgEl.textContent = '两次密码不一致'; msgEl.className = 'msg error'; return; }
+    btn.disabled = true; btn.textContent = '保存中...';
+    var r = await sb.auth.updateUser({ password: pw1 });
+    if (r.error) {
+      msgEl.textContent = '失败：' + (r.error.message || '请重试');
+      msgEl.className = 'msg error';
+      btn.disabled = false; btn.textContent = '确认重置';
+    } else {
+      elAction.innerHTML = '';
+      elSpinner.style.display = 'block';
+      showDone('密码已重置', '请返回 VaultGTA 软件，用新密码登录。');
+    }
+  }
+
+  if (error) {
+    showError('验证失败', errorDesc || error);
+    return;
+  }
+
+  if (type === 'recovery') {
+    if (accessToken && refreshToken) {
+      sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(function (r) {
+          if (r.error) { showError('链接已过期', '请重新申请重置密码'); }
+          else { showPasswordForm(); }
+        });
+    } else {
+      showError('链接格式无效', '请重新申请重置密码');
+    }
+  } else if (type === 'magiclink' || type === 'signup') {
+    if (accessToken && refreshToken) {
+      sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(function (r) {
+          if (r.error) {
+            showError('验证失败', r.error.message || '链接已过期');
+          } else {
+            showDone(type === 'signup' ? '注册成功！' : '登录成功！',
+              type === 'signup' ? '请打开 VaultGTA 软件开始使用。' : '请打开 VaultGTA 软件，已自动登录。');
+          }
+        });
+    } else {
+      showError('链接格式无效', '请重新申请');
+    }
+  } else if (type === 'email_change') {
+    if (accessToken && refreshToken) {
+      sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(function (r) {
+          if (r.error) { showError('验证失败', r.error.message || '链接已过期'); }
+          else { showDone('邮箱已更换', '请返回 VaultGTA 软件。'); }
+        });
+    } else {
+      showError('链接格式无效', '请重新申请');
+    }
+  } else {
+    if (accessToken && refreshToken) {
+      sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(function (r) {
+          if (r.error) { showError('验证失败', r.error.message || '请重新申请'); }
+          else { showDone('验证成功', '请返回 VaultGTA 软件。'); }
+        });
+    } else {
+      showError('无效的验证链接', '请重新申请。');
+    }
+  }
+})();
+</script>
+</body>
+</html>
