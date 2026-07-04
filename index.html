@@ -132,8 +132,11 @@
           if (r.error) {
             showError('验证失败', r.error.message || '链接已过期');
           } else {
-            showDone(type === 'signup' ? '注册成功！' : '登录成功！',
-              type === 'signup' ? '请打开 VaultGTA 软件开始使用。' : '请打开 VaultGTA 软件，已自动登录。');
+            showDone(type === 'signup' ? '注册成功！' : '登录成功！', '正在返回软件...');
+            // Redirect back to desktop app via custom protocol
+            setTimeout(function () {
+              window.location.href = 'vaultgta://auth?access_token=' + encodeURIComponent(accessToken) + '&refresh_token=' + encodeURIComponent(refreshToken);
+            }, 500);
           }
         });
     } else {
