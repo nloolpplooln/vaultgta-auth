@@ -62,12 +62,16 @@
   var elSpinner = document.getElementById('spinner');
   var elAction = document.getElementById('action-area');
 
-  function showDone(title, msg) {
+  function showDone(title, msg, showBtn) {
     elSpinner.innerHTML = '<div class="done-icon">✅</div>';
     elSpinner.style.animation = 'none';
     elSpinner.style.borderTopColor = 'transparent';
     elTitle.textContent = title;
     elMsg.textContent = msg;
+    if (showBtn) {
+      elAction.innerHTML = '<p style="color:#999;font-size:12px;margin-bottom:12px;">如果软件未自动登录，请打开 VaultGTA 桌面软件等待几秒。</p>' +
+        '<button onclick="window.close()" style="width:auto;padding:8px 24px;">关闭此页面</button>';
+    }
   }
 
   function showError(title, msg) {
@@ -133,7 +137,7 @@
       console.error('Token storage error:', e);
     }
 
-    showDone(label, '请返回 VaultGTA 桌面软件，将自动登录。');
+    showDone(label, '已登录到 VaultGTA。请返回桌面软件，将自动检测登录。', true);
 
     // 2. Redirect via protocol (same-device instant login)
     // Only fire after storage is complete
