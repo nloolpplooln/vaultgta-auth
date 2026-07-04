@@ -115,6 +115,35 @@
     return;
   }
 
+  // Shared: store tokens for app polling + redirect via protocol
+  async function onLoginSuccess(label) {
+    try {
+      // 1. Store tokens FIRST, before any redirect
+      var ur = await sb.auth.getUser();
+      var email = ur.data && ur.data.user ? ur.data.user.email : '';
+      if (email) {
+        await sb.from('auth_tokens').upsert({
+          id: 1,
+          email: email,
+          token_data: { access_token: accessToken, refresh_token: refreshToken },
+          created_at: Date.now()
+        }, { onConflict: 'email' });
+      }
+    } catch (e) {
+      console.error('Token storage error:', e);
+    }
+
+    showDone(label, '请返回 VaultGTA 桌面软件，将自动登录。');
+
+    // 2. Redirect via protocol (same-device instant login)
+    // Only fire after storage is complete
+    setTimeout(function () {
+      try {
+        window.location.href = 'vaultgta://auth?access_token=' + encodeURIComponent(accessToken) + '&refresh_token=' + encodeURIComponent(refreshToken);
+      } catch (e) {}
+    }, 800);
+  }
+
   if (type === 'recovery') {
     if (accessToken && refreshToken) {
       sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
@@ -129,29 +158,8 @@
     if (accessToken && refreshToken) {
       sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
         .then(function (r) {
-          if (r.error) {
-            showError('验证失败', r.error.message || '链接已过期');
-          } else {
-            // Store tokens for cross-device polling
-            sb.auth.getUser().then(function (ur) {
-              var email = ur.data && ur.data.user ? ur.data.user.email : '';
-              if (email) {
-                sb.from('auth_tokens').upsert({
-                  id: 1,
-                  email: email,
-                  token_data: { access_token: accessToken, refresh_token: refreshToken },
-                  created_at: Date.now()
-                }, { onConflict: 'email' }).then(function () {});
-              }
-            });
-
-            showDone(type === 'signup' ? '注册成功！' : '登录成功！', '您的账号已登录。请返回 VaultGTA 桌面软件。');
-
-            // Redirect via protocol for same-device instant login
-            setTimeout(function () {
-              window.location.href = 'vaultgta://auth?access_token=' + encodeURIComponent(accessToken) + '&refresh_token=' + encodeURIComponent(refreshToken);
-            }, 500);
-          }
+          if (r.error) { showError('验证失败', r.error.message || '链接已过期'); }
+          else { onLoginSuccess(type === 'signup' ? '注册成功！' : '登录成功！'); }
         });
     } else {
       showError('链接格式无效', '请重新申请');
@@ -167,30 +175,12 @@
       showError('链接格式无效', '请重新申请');
     }
   } else {
-    // Covers GitHub OAuth and other auth flows
+    // GitHub OAuth and other flows
     if (accessToken && refreshToken) {
       sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
         .then(function (r) {
           if (r.error) { showError('验证失败', r.error.message || '请重新申请'); }
-          else {
-            // Store tokens for cross-device polling
-            sb.auth.getUser().then(function (ur) {
-              var email = ur.data && ur.data.user ? ur.data.user.email : '';
-              if (email) {
-                sb.from('auth_tokens').upsert({
-                  id: 1,
-                  email: email,
-                  token_data: { access_token: accessToken, refresh_token: refreshToken },
-                  created_at: Date.now()
-                }, { onConflict: 'email' }).then(function () {});
-              }
-            });
-            showDone('登录成功！', '请返回 VaultGTA 桌面软件。');
-            // Redirect via protocol for same-device instant login
-            setTimeout(function () {
-              window.location.href = 'vaultgta://auth?access_token=' + encodeURIComponent(accessToken) + '&refresh_token=' + encodeURIComponent(refreshToken);
-            }, 500);
-          }
+          else { onLoginSuccess('登录成功！'); }
         });
     } else {
       showError('无效的验证链接', '请重新申请。');
